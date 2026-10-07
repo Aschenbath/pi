@@ -1,6 +1,7 @@
 import { setKeybindings } from "@earendil-works/pi-tui";
 import { afterEach, beforeAll, describe, expect, it, vi } from "vitest";
 import { KeybindingsManager } from "../src/core/keybindings.ts";
+import { SettingsManager, type WarningSettings } from "../src/core/settings-manager.ts";
 import {
 	type SettingsCallbacks,
 	type SettingsConfig,
@@ -62,6 +63,35 @@ describe("SettingsSelectorComponent", () => {
 		cycle("Fullscreen wheel scrolling", 3);
 		expect(onWheelScrollLinesChange.mock.calls.flat()).toEqual([10, "auto", 1]);
 	});
+
+	// Regression: https://github.com/earendil-works/pi/issues/10354
+	it.each([undefined, true, false])(
+		"toggles and saves the bug report hint with initial value %s",
+		async (bugReport) => {
+			const settings = SettingsManager.inMemory({ warnings: { anthropicExtraUsage: false, bugReport } });
+			const config = {
+				defaultModel: "not set",
+				availableDefaultModels: [],
+				modelThinkingLevels: {},
+				warnings: settings.getWarnings(),
+			} as unknown as SettingsConfig;
+			const callbacks = {
+				onWarningsChange: (warnings: WarningSettings) => settings.setWarnings(warnings),
+			} as unknown as SettingsCallbacks;
+			const list = new SettingsSelectorComponent(config, callbacks).getSettingsList();
+			list.selectItem("warnings");
+			list.handleInput("\r");
+			expect(stripAnsi(list.render(120).join("\n"))).toMatch(new RegExp(`Bug report hint\\s+${bugReport ?? true}`));
+			list.handleInput("\x1b[B");
+			list.handleInput("\r");
+			await settings.flush();
+			await settings.reload();
+			expect(settings.getWarnings()).toEqual({ anthropicExtraUsage: false, bugReport: !(bugReport ?? true) });
+			list.handleInput("\r");
+			await settings.flush();
+			expect(settings.getWarnings()).toEqual({ anthropicExtraUsage: false, bugReport: bugReport ?? true });
+		},
+	);
 
 	it("keeps the configured fixed theme marked while browsing", () => {
 		const config = {

@@ -167,3 +167,8 @@ The built-in extensions are named `builtin:mcp`, `builtin:llama.cpp`, `builtin:c
 | `enableInstallTelemetry` | boolean | `true` | Enable anonymous install/update reporting and selected provider attribution headers. Does not control update checks. |
 | `enableAnalytics` | boolean | `false` | Opt in to analytics data sharing. Currently used only by the experimental first-run setup. |
 | `warnings.anthropicExtraUsage` | boolean | `true` | Warn when Anthropic subscription authentication may use paid extra usage. |
+| `warnings.bugReport` | boolean | `true` | Suggest `/bug` after an unexpected, non-retryable error in interactive mode. |
+
+Previously, the automatic `/bug` hint could not be disabled, even when an extension had already explained how to recover from an error. To hide it, set `warnings.bugReport` to `false` in settings.json, or open `/settings` → **Warnings** → **Bug report hint**. The error itself, installation-change warnings, crash recording, and the manual `/bug` command remain available. The default still shows the hint at most once per session; enabling it after a suppressed error allows a later unexpected error to show the hint.
+
+Offline tests cover suppression, enabling the hint again, preserving installation-change warnings, and saving the toggle without changing other warning settings. This setting controls the interactive hint only; it does not change provider errors or retry behavior.

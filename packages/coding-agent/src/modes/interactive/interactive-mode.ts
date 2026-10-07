@@ -2173,6 +2173,7 @@ export class InteractiveMode {
 		if (message.stopReason !== "error" || isRetryableAssistantError(message)) return;
 		if (/\b(?:abort(?:ed)?|cancel(?:l?ed)?)\b/i.test(message.errorMessage ?? "")) return;
 		if (this.maybeShowInstallChangeWarning()) return;
+		if (this.settingsManager.getWarnings().bugReport === false) return;
 		this.suggestBugReport();
 	}
 

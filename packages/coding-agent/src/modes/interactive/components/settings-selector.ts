@@ -160,6 +160,13 @@ class WarningSettingsSubmenu extends Container {
 				currentValue: (this.state.anthropicExtraUsage ?? true) ? "true" : "false",
 				values: ["true", "false"],
 			},
+			{
+				id: "bug-report",
+				label: "Bug report hint",
+				description: "Suggest /bug after unexpected errors",
+				currentValue: (this.state.bugReport ?? true) ? "true" : "false",
+				values: ["true", "false"],
+			},
 		];
 
 		this.settingsList = new SettingsList(
@@ -170,6 +177,10 @@ class WarningSettingsSubmenu extends Container {
 				switch (id) {
 					case "anthropic-extra-usage":
 						this.state = { ...this.state, anthropicExtraUsage: newValue === "true" };
+						onChange({ ...this.state });
+						break;
+					case "bug-report":
+						this.state = { ...this.state, bugReport: newValue === "true" };
 						onChange({ ...this.state });
 						break;
 				}
