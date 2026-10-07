@@ -86,6 +86,14 @@ Loaded and sleeping models appear in `/model`. Sleeping models wake automaticall
 
 If the router disconnects, `/llama` shows **Retry** and **Close**. Retry reconnects and refreshes model state without replaying the interrupted operation.
 
+### Context capacity
+
+For loaded chat models, Pi reads the actual per-slot context capacity from [`/props?model=…&autoload=false`](https://github.com/ggml-org/llama.cpp/blob/master/tools/server/README.md#get-props-get-server-global-properties), using `default_generation_settings.n_ctx`. This takes precedence over the model catalog and launch arguments: the GGUF training context can differ from the served context, and a server can divide its allocation among several slots. Previously, Pi discarded this property and could store an incorrect capacity, such as 8192 instead of the served 65536 tokens.
+
+Pi stores the observed capacity for both the chat model and its classifier entry and restores it on cache-only startup. Missing or invalid properties retain the existing catalog, launch-argument, cached-capacity, and training-context fallbacks. Sleeping and unloaded models are not queried for properties, so refreshing their catalog does not wake or load them. The properties request is already used to discover thinking support; context discovery adds no requests.
+
+Loopback-server regression tests cover capacity selection, cache restoration, sleeping models, and invalid properties. They do not exercise a live llama-server or establish that every incorrect context display on session resume has this cause. Existing cached values update after a live catalog refresh of a loaded model.
+
 ## Classification
 
 Classifier models answer typed `choice`, `bool`, and `score` questions about JSON state, like TypeSafe's Jev models. The model reaches them from [`codemode`](cli.md#enable-codemode) scripts, and extensions through `ctx.modelRegistry.classify()`; see [Classifier models](models.md#use-classifier-models). Pi lists llama.cpp models as classifiers in two ways:

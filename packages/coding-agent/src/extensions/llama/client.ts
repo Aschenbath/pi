@@ -31,6 +31,7 @@ export interface LlamaModelsResponse {
 export interface LlamaServerProps {
 	models_autoload?: boolean;
 	chat_template?: string;
+	default_generation_settings?: { n_ctx: number };
 }
 
 export interface LlamaModelEvent {
@@ -198,10 +199,21 @@ export class LlamaClient {
 		const query = options.model ? `?${new URLSearchParams({ model: options.model, autoload: "false" })}` : "";
 		const payload = await this.request(`/props${query}`, { signal: options.signal });
 		if (typeof payload !== "object" || payload === null) return {};
-		const { models_autoload: modelsAutoload, chat_template: chatTemplate } = payload as Record<string, unknown>;
+		const {
+			models_autoload: modelsAutoload,
+			chat_template: chatTemplate,
+			default_generation_settings: generationSettings,
+		} = payload as Record<string, unknown>;
+		const contextWindow =
+			typeof generationSettings === "object" && generationSettings !== null
+				? (generationSettings as { n_ctx?: unknown }).n_ctx
+				: undefined;
 		return {
 			...(typeof modelsAutoload === "boolean" ? { models_autoload: modelsAutoload } : {}),
 			...(typeof chatTemplate === "string" ? { chat_template: chatTemplate } : {}),
+			...(typeof contextWindow === "number" && Number.isSafeInteger(contextWindow) && contextWindow > 0
+				? { default_generation_settings: { n_ctx: contextWindow } }
+				: {}),
 		};
 	}
 

@@ -68,7 +68,10 @@ function configuredContextWindow(model: LlamaModelInfo): number | undefined {
 	return undefined;
 }
 
-function contextWindowOf(model: LlamaModelInfo, cachedContextWindow?: number): number {
+function contextWindowOf(model: LlamaModelInfo, cachedContextWindow?: number, props?: LlamaServerProps): number {
+	// /props reports the served per-slot context, which can differ from training metadata and launch arguments.
+	const servedContextWindow = props?.default_generation_settings?.n_ctx;
+	if (servedContextWindow && servedContextWindow > 0) return servedContextWindow;
 	const runtimeContextWindow = model.meta?.n_ctx;
 	if (runtimeContextWindow && runtimeContextWindow > 0) return runtimeContextWindow;
 	const configuredContext = configuredContextWindow(model);
@@ -103,6 +106,7 @@ function toPiClassifierModel(
 	model: LlamaModelInfo,
 	serverUrl: string,
 	cachedContextWindow?: number,
+	props?: LlamaServerProps,
 ): ClassifierModel<LlamaClassifierApi> {
 	const decision = isDecisionModel(model);
 	return {
@@ -114,7 +118,7 @@ function toPiClassifierModel(
 		baseUrl: decision ? llamaInferenceUrl(serverUrl) : serverUrl,
 		input: ["text"],
 		cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-		contextWindow: contextWindowOf(model, cachedContextWindow),
+		contextWindow: contextWindowOf(model, cachedContextWindow, props),
 	};
 }
 
@@ -130,7 +134,7 @@ function toPiModel(
 	props?: LlamaServerProps,
 	cachedContextWindow?: number,
 ): Model<"openai-completions"> {
-	const contextWindow = contextWindowOf(model, cachedContextWindow);
+	const contextWindow = contextWindowOf(model, cachedContextWindow, props);
 	const reasoning = props?.chat_template?.includes("enable_thinking") === true;
 	return {
 		id: model.id,
@@ -265,16 +269,18 @@ export function createLlamaProvider(): LlamaProviderController {
 			// need to be loaded, while querying sleeping models may wake them. Those models remain without thinking
 			// support until they are loaded and a later catalog refresh discovers it. Decision models need no
 			// template, and llama.cpp reports them in the catalog regardless of their status.
+			const propsByModel = new Map<string, LlamaServerProps>();
 			const refreshed = await Promise.all(
 				selectable.filter(isChatModel).map(async (model) => {
 					const cachedContextWindow = cachedContextWindows.get(model.id);
 					if (model.status.value !== "loaded") return toPiModel(model, serverUrl, undefined, cachedContextWindow);
 					const props = await client.props({ model: model.id, signal: context.signal });
+					propsByModel.set(model.id, props);
 					return toPiModel(model, serverUrl, props, cachedContextWindow);
 				}),
 			);
 			const refreshedClassifiers = selectable.map((model) =>
-				toPiClassifierModel(model, serverUrl, cachedContextWindows.get(model.id)),
+				toPiClassifierModel(model, serverUrl, cachedContextWindows.get(model.id), propsByModel.get(model.id)),
 			);
 			if (context.signal.aborted) return;
 			await context.publish({
