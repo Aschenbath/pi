@@ -294,6 +294,19 @@ export class ScopedModelsSelectorComponent extends Container implements Focusabl
 			return;
 		}
 
+		if (kb.matches(data, "tui.select.pageUp")) {
+			if (this.filteredItems.length === 0) return;
+			this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisible);
+			this.updateList();
+			return;
+		}
+		if (kb.matches(data, "tui.select.pageDown")) {
+			if (this.filteredItems.length === 0) return;
+			this.selectedIndex = Math.min(this.filteredItems.length - 1, this.selectedIndex + this.maxVisible);
+			this.updateList();
+			return;
+		}
+
 		// Reorder enabled models
 		const reorderUp = kb.matches(data, "app.models.reorderUp");
 		const reorderDown = kb.matches(data, "app.models.reorderDown");

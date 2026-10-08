@@ -153,6 +153,10 @@ export class SelectList implements Component {
 		else if (kb.matches(keyData, "tui.select.down")) {
 			this.selectedIndex = this.selectedIndex === this.filteredItems.length - 1 ? 0 : this.selectedIndex + 1;
 			this.notifySelectionChange();
+		} else if (kb.matches(keyData, "tui.select.pageUp")) {
+			this.pageSelection(-1);
+		} else if (kb.matches(keyData, "tui.select.pageDown")) {
+			this.pageSelection(1);
 		}
 		// Enter
 		else if (kb.matches(keyData, "tui.select.confirm")) {
@@ -167,6 +171,14 @@ export class SelectList implements Component {
 				this.onCancel();
 			}
 		}
+	}
+
+	private pageSelection(direction: -1 | 1): void {
+		if (this.filteredItems.length === 0) return;
+		const nextIndex = clamp(this.selectedIndex + direction * this.maxVisible, 0, this.filteredItems.length - 1);
+		if (nextIndex === this.selectedIndex) return;
+		this.selectedIndex = nextIndex;
+		this.notifySelectionChange();
 	}
 
 	private getVisibleRange(): { startIndex: number; endIndex: number } {

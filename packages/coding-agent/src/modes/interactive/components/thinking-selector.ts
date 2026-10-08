@@ -137,6 +137,8 @@ export class ThinkingSelectorComponent extends Container implements Focusable {
 		const isNav =
 			kb.matches(keyData, "tui.select.up") ||
 			kb.matches(keyData, "tui.select.down") ||
+			kb.matches(keyData, "tui.select.pageUp") ||
+			kb.matches(keyData, "tui.select.pageDown") ||
 			kb.matches(keyData, "tui.select.confirm") ||
 			kb.matches(keyData, "tui.select.cancel");
 		if (isNav) {

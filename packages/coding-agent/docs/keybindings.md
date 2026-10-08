@@ -95,6 +95,23 @@ The dedicated history actions browse prompt history regardless of cursor positio
 | `tui.select.confirm` | `enter` | Confirm selection |
 | `tui.select.cancel` | `escape`, `ctrl+c` | Cancel selection |
 
+List paging uses the existing `tui.select.pageUp` and `tui.select.pageDown` actions. Previously, several lists accepted these bindings in configuration but ignored them. Autocomplete, settings and their searchable submenus, model and thinking selection, login/logout, scoped models, and fork-message history now move the highlight by one page of items, clamped at the first and last item. Paging applies to the filtered list without changing the query, activating an item, or changing its value. `SelectList.onSelectionChange` fires only when paging changes the highlight, so preview callbacks still work.
+
+For example, to use Emacs-style paging:
+
+```json
+{
+  "tui.select.pageDown": "ctrl+v",
+  "tui.select.pageUp": "alt+v",
+  "tui.editor.pageDown": "ctrl+v",
+  "tui.editor.pageUp": "alt+v"
+}
+```
+
+While autocomplete is open, its page bindings take precedence over editor paging and application shortcuts such as clipboard paste. Closing autocomplete restores the usual application behavior. Extension shortcuts still run first. Fullscreen transcript shortcuts also retain their priority; assign distinct keys or disable the conflicting `tui.altScreen` bindings if you want the same keys to reach a list.
+
+Regression tests cover default and remapped keys, filtering, empty lists, page boundaries, preview notifications, and the interactive editor's clipboard shortcut conflict using synthetic terminal input. They do not verify individual terminal emulators' key encoding.
+
 #### Fullscreen
 
 In fullscreen mode, these actions control the transcript and take precedence over editor actions using the same key.

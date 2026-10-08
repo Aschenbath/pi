@@ -87,6 +87,12 @@ class UserMessageList implements Component {
 		// Down arrow - go to next (newer) message, wrap to top when at bottom
 		else if (kb.matches(keyData, "tui.select.down")) {
 			this.selectedIndex = this.selectedIndex === this.messages.length - 1 ? 0 : this.selectedIndex + 1;
+		} else if (kb.matches(keyData, "tui.select.pageUp")) {
+			if (this.messages.length === 0) return;
+			this.selectedIndex = Math.max(0, this.selectedIndex - this.maxVisible);
+		} else if (kb.matches(keyData, "tui.select.pageDown")) {
+			if (this.messages.length === 0) return;
+			this.selectedIndex = Math.min(this.messages.length - 1, this.selectedIndex + this.maxVisible);
 		}
 		// Enter - select message and branch
 		else if (kb.matches(keyData, "tui.select.confirm")) {

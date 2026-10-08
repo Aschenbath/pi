@@ -91,6 +91,15 @@ export class CustomEditor extends Editor {
 			return;
 		}
 
+		// Page bindings belong to the open picker, even when they share an app shortcut.
+		if (
+			this.isShowingAutocomplete() &&
+			(this.keybindings.matches(data, "tui.select.pageUp") || this.keybindings.matches(data, "tui.select.pageDown"))
+		) {
+			super.handleInput(data);
+			return;
+		}
+
 		// Check for clipboard paste keybinding
 		if (this.keybindings.matches(data, "app.clipboard.pasteImage")) {
 			this.onPasteImage?.();
