@@ -34,6 +34,14 @@ Run `/thinking` to select the thinking level for the current model. Press `Ctrl+
 
 A session records model and thinking-level changes. Resuming the session restores them without changing defaults for new sessions.
 
+### CLI model IDs shared by providers
+
+When a `--model` value exactly matches model IDs on several providers, Pi selects the sole provider with configured authentication. If none or several are configured, it reports ambiguity and lists the explicit `provider/model` choices. Use `--provider` or a full provider-prefixed reference to choose one.
+
+This also applies when the first segment looks like a provider but the model is only listed on gateways. For example, if `anthropic/unique-model` is absent from the direct Anthropic catalog but listed on both OpenRouter and Vercel AI Gateway, Pi selects Vercel when only Vercel is configured. Previously, this fallback picked the first catalog match, potentially selecting an unconfigured provider. It now uses the same authentication and ambiguity checks as other exact IDs, including with a `:high` thinking suffix. A literal catalog ID containing a colon is matched before interpreting a thinking suffix.
+
+A unique match can still be selected without stored authentication for first-time `--api-key` setup. Explicit provider selections keep their existing behavior. Regression tests use synthetic catalogs and configured-auth states; they cover catalog ordering, ambiguity, case-insensitive IDs, and colon suffixes without making provider requests.
+
 ## Connect local models
 
 Pi integrates directly with the llama.cpp router. The router discovers GGUF files and loads models on demand. Pi's `/llama` command manages the router, while `/model` selects one of its loaded models.

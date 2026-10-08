@@ -462,13 +462,12 @@ export function resolveCliModel(options: {
 		}
 	}
 
-	// If no provider was inferred from the slash, try exact matches without provider inference.
-	// This handles models whose IDs naturally contain slashes (e.g. OpenRouter-style IDs).
-	// Bare exact IDs can exist in multiple providers, so do not choose by catalog order.
+	// Exact IDs can exist in multiple providers, including when a slash prefix looked like
+	// a provider but did not resolve there. Both paths must avoid choosing by catalog order.
 	// Prefer the sole authenticated provider when there is one; otherwise require an
 	// explicit provider to avoid silently selecting an unusable provider.
-	if (!provider) {
-		const lower = cliModel.toLowerCase();
+	const resolveExactMatch = (reference: string): ResolveCliModelResult | undefined => {
+		const lower = reference.toLowerCase();
 		const exactMatches = availableModels.filter(
 			(m) => m.id.toLowerCase() === lower || `${m.provider}/${m.id}`.toLowerCase() === lower,
 		);
@@ -501,6 +500,12 @@ export function resolveCliModel(options: {
 				error: `Model "${cliModel}" is ambiguous across providers: ${matches}. ${authHint} Use --provider or provider/model.`,
 			};
 		}
+		return undefined;
+	};
+
+	if (!provider) {
+		const exact = resolveExactMatch(cliModel);
+		if (exact) return exact;
 	}
 
 	if (cliProvider && provider) {
@@ -546,12 +551,17 @@ export function resolveCliModel(options: {
 	// This handles OpenRouter-style IDs like "openai/gpt-4o:extended" where "openai"
 	// looks like a provider but the full string is actually a model id on openrouter.
 	if (inferredProvider) {
-		const lower = cliModel.toLowerCase();
-		const exact = availableModels.find(
-			(m) => m.id.toLowerCase() === lower || `${m.provider}/${m.id}`.toLowerCase() === lower,
-		);
-		if (exact) {
-			return { model: exact, warning: undefined, thinkingLevel: undefined, error: undefined };
+		const exact = resolveExactMatch(cliModel);
+		if (exact) return exact;
+		// A valid thinking suffix must not bypass exact-match ambiguity checks. Literal
+		// IDs containing colons take precedence because the full reference was tried first.
+		const lastColon = cliModel.lastIndexOf(":");
+		if (lastColon !== -1) {
+			const suffix = cliModel.substring(lastColon + 1);
+			if (isValidThinkingLevel(suffix)) {
+				const exact = resolveExactMatch(cliModel.substring(0, lastColon));
+				if (exact) return { ...exact, thinkingLevel: exact.model ? suffix : undefined };
+			}
 		}
 		// Also try parseModelPattern on the full input against all models
 		const fallback = parseModelPattern(cliModel, availableModels, {
