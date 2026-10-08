@@ -542,6 +542,10 @@ const bookMeetingTool: Tool = {
 
 Tools can opt in to provider-side constrained sampling. For JSON-schema tools, `strict: 'prefer'` uses provider-side strict schema enforcement when supported and otherwise falls back to normal tool calling. `strict: 'require'` fails the request when the active provider/model cannot honor it. Set `constrainedSampling: false` to explicitly opt out; it behaves the same as omitting the field.
 
+For Anthropic Messages, a pre-stream HTTP 400 saying `The compiled grammar is too large` triggers one fallback when eligible `prefer` tools are present and no tool definition requires strict sampling. Previously, this server-side rejection failed even for `prefer`. Pi now rebuilds ordinary schemas from the original tools, including native mid-conversation tool additions, and calls `onPayload` again before sending the fallback. Tool definitions and model metadata are not modified. Any `require` tool prevents the fallback, including in mixed tool sets.
+
+The fallback adds a request and may lose prompt-cache reuse because the tool schemas change. It is separate from the configured transport retry budget and is attempted at most once per stream call. Cancellation, unrelated errors, and errors after streaming starts do not trigger it. Regression tests cover mocked HTTP rejections, schema restoration, required tools, OAuth names, payload hooks, native tool additions, and retry/cancellation boundaries; live grammar-size limits and cache effects are not measured.
+
 ```typescript
 const strictTool: Tool = {
   name: 'edit_file',

@@ -636,18 +636,63 @@ export const stream: StreamFunction<"anthropic-messages", AnthropicOptions> = (
 				client = created.client;
 				isOAuth = created.isOAuthToken;
 			}
-			let params = buildParams(model, normalizedContext, isOAuth, options);
-			const nextParams = await options?.onPayload?.(params, model);
-			if (nextParams !== undefined) {
-				params = { ...(nextParams as MessageCreateParamsStreaming), stream: true };
-			}
+			const prepareParams = async (requestModel: Model<"anthropic-messages">) => {
+				const params = buildParams(requestModel, normalizedContext, isOAuth, options);
+				const nextParams = await options?.onPayload?.(params, model);
+				return nextParams === undefined
+					? params
+					: { ...(nextParams as MessageCreateParamsStreaming), stream: true as const };
+			};
+			let params = await prepareParams(model);
 			const requestOptions = {
 				...(options?.signal ? { signal: options.signal } : {}),
 				...(options?.timeoutMs !== undefined ? { timeout: options.timeoutMs } : {}),
 				maxRetries: 0,
 			};
+			let strictFallbackAttempted = false;
 			const response = await retryProviderRequest(
-				() => client.beta.messages.create(params, requestOptions).asResponse(),
+				async () => {
+					try {
+						return await client.beta.messages.create(params, requestOptions).asResponse();
+					} catch (error) {
+						if (
+							strictFallbackAttempted ||
+							options?.signal?.aborted ||
+							!(error instanceof Anthropic.BadRequestError) ||
+							!/compiled grammar is too large/i.test(error.message)
+						)
+							throw error;
+						// Include historical native tool additions, not just the currently active tools.
+						const tools = normalizedContext.messages.flatMap((message) =>
+							message.role === "system" ? (message.toolsAdded ?? []) : [],
+						);
+						if (
+							tools.some(
+								(tool) =>
+									tool.constrainedSampling &&
+									tool.constrainedSampling.type === "json_schema" &&
+									tool.constrainedSampling.strict === "require",
+							) ||
+							!tools.some(
+								(tool) =>
+									tool.constrainedSampling &&
+									tool.constrainedSampling.type === "json_schema" &&
+									tool.constrainedSampling.strict === "prefer" &&
+									resolveJsonSchemaStrictSampling(
+										tool,
+										getAnthropicCompat(model).supportsStrictTools,
+										isAnthropicStrictUnsupportedKeyword,
+									) === true,
+							)
+						)
+							throw error;
+						strictFallbackAttempted = true;
+						// Rebuild from original schemas: strict conversion makes optional properties
+						// required and nullable, so merely removing the wire strict flag is insufficient.
+						params = await prepareParams({ ...model, compat: { ...model.compat, supportsStrictTools: false } });
+						return client.beta.messages.create(params, requestOptions).asResponse();
+					}
+				},
 				{
 					maxRetries: options?.maxRetries,
 					maxRetryDelayMs: options?.maxRetryDelayMs,
