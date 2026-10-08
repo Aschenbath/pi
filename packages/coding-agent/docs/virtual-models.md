@@ -28,6 +28,14 @@ In interactive mode, the footer shows the routed model next to the selection, fo
 
 Context usage uses the limits of the physical model that produced the latest response, even if that response came before switching to the virtual model. Without such a response, it uses the limits declared on the virtual model, if any. Compaction checks the same limits, and again the limits of the model each request is routed to. If that model's context window is too small for the conversation, Pi compacts before sending the request; the route stays as the router chose it.
 
+### Cache warming
+
+With [cache warming](settings.md#model-and-thinking) enabled, Pi warms the physical request most recently sent by the session. Previously, the virtual selection and physical request were compared directly, so routed requests immediately became ineligible. Pi now keeps that request eligible while the same virtual model remains selected and the conversation still extends its request prefix. Changing the selection, replacing the session, or replacing that prefix invalidates it; the next session request replaces it, including when the router picks another physical model.
+
+A refresh replays the captured physical request with a one-token output limit; it does not call `route()` or change router state. The physical model's cache lifetime, prices, and existing warming limits still apply, and `cache_warming_decision` can stop a refresh. Pi cannot predict a future routing change: warming can cost money without saving a cache miss if the next request chooses another model. Routers that expect frequent changes can use the decision hook to stop warming.
+
+SDK regression tests cover refresh dispatch, the decision hook, route changes, and invalidation after selection, session, or prefix changes using a local test provider. These tests do not measure live provider cache hits or savings.
+
 ## Register a virtual model
 
 ```typescript

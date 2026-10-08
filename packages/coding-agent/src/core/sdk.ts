@@ -38,7 +38,7 @@ import {
 	createWriteTool,
 	withFileMutationQueue,
 } from "./tools/index.ts";
-import { getBranchSelection } from "./virtual-models.ts";
+import { getBranchSelection, isVirtualModel } from "./virtual-models.ts";
 
 // Preserve the pre-0.81 fallback for extensions that construct Agent instances
 // or invoke low-level agent loops without supplying streamFn. Agent core remains
@@ -364,16 +364,21 @@ export async function createAgentSession(options: CreateAgentSessionOptions = {}
 			},
 		};
 	};
-	// Warm only requests for the selected model. Requests a virtual selection routed, or that an
-	// extension redirected, may not be repeated by the next request, so warming them could be wasted.
+	// A virtual selection stays in agent state while its physical request is warmed. Each new
+	// session request replaces the warm run, including when the router chooses another model.
+	// Physical selections still require the request model to match, excluding extension redirects.
 	const cacheContextIsCurrent = (requestModel: Model<any>) => {
+		const selectedModel = agent.state.model;
+		const { provider, id } = isVirtualModel(selectedModel) ? selectedModel : requestModel;
+		const sessionId = sessionManager.getSessionId();
 		const messages = agent.state.messages;
 		return () => {
 			const currentModel = agent.state.model;
 			const currentMessages = agent.state.messages;
 			return (
-				currentModel.provider === requestModel.provider &&
-				currentModel.id === requestModel.id &&
+				sessionManager.getSessionId() === sessionId &&
+				currentModel.provider === provider &&
+				currentModel.id === id &&
 				messages.length <= currentMessages.length &&
 				messages.every((message, index) => currentMessages[index] === message)
 			);

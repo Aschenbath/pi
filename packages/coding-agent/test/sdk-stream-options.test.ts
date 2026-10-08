@@ -9,7 +9,7 @@ import {
 	normalizeContext,
 	type SimpleStreamOptions,
 } from "@earendil-works/pi-ai";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ExtensionFactory } from "../src/core/extensions/types.ts";
 import { DefaultResourceLoader } from "../src/core/resource-loader.ts";
@@ -147,7 +147,10 @@ describe("createAgentSession stream options", () => {
 		}
 	}
 
-	async function createCacheWarmingSession(populate?: (manager: SessionManager, model: Model<Api>) => void) {
+	async function createCacheWarmingSession(
+		populate?: (manager: SessionManager, model: Model<Api>) => void,
+		virtual = false,
+	) {
 		const model: Model<Api> = {
 			...createModel("anthropic-messages"),
 			cost: { input: 10, output: 50, cacheRead: 0.25, cacheWrite: 12.5 },
@@ -157,13 +160,36 @@ describe("createAgentSession stream options", () => {
 		await authStorage.modify(model.provider, async () => ({ type: "api_key", key: "test-api-key" }));
 		const modelRegistry = await createModelRegistry(authStorage, join(agentDir, "models.json"));
 		let providerCalls = 0;
+		let routeModel = model;
+		const route = vi.fn(() => ({ model: routeModel, thinkingLevel: "off" as const }));
+		const decide = vi.fn(() => ({ action: "warm" as const }));
+		const requests: { model: string; maxTokens?: number }[] = [];
 		modelRegistry.registerProvider(model.provider, {
 			api: model.api,
-			streamSimple: () => {
+			models: [model, { ...model, id: "other-model" }],
+			streamSimple: (requestModel, _context, options) => {
 				providerCalls++;
-				return createDoneStream(model.api, 100_000);
+				requests.push({ model: requestModel.id, maxTokens: options?.maxTokens });
+				const stream = createAssistantMessageEventStream();
+				stream.end({ ...createDoneMessage(model.api, 100_000), model: requestModel.id });
+				return stream;
 			},
 		});
+		const settingsManager = SettingsManager.inMemory({ cacheWarming: "idle" });
+		const resourceLoader = new DefaultResourceLoader({
+			cwd,
+			agentDir,
+			settingsManager,
+			extensionFactories: virtual
+				? [
+						(pi) => {
+							pi.registerVirtualModel({ provider: "router", id: "auto", name: "Auto", route });
+							pi.on("cache_warming_decision", decide);
+						},
+					]
+				: [],
+		});
+		await resourceLoader.reload();
 		const sessionManager = SessionManager.inMemory(cwd);
 		populate?.(sessionManager, model);
 		const { session } = await createAgentSession({
@@ -171,11 +197,20 @@ describe("createAgentSession stream options", () => {
 			agentDir,
 			model,
 			modelRuntime: getModelRuntime(modelRegistry),
-			settingsManager: SettingsManager.inMemory({ cacheWarming: "idle" }),
+			settingsManager,
+			resourceLoader,
 			sessionManager,
 		});
+		if (virtual) await session.setModel(session.modelRuntime.getModel("router", "auto")!);
 		return {
 			session,
+			model,
+			requests,
+			route,
+			decide,
+			setRoute: (id: string) => {
+				routeModel = session.modelRuntime.getPhysicalModel(model.provider, id)!;
+			},
 			providerCalls: () => providerCalls,
 			dispose: () => {
 				session.dispose();
@@ -195,6 +230,75 @@ describe("createAgentSession stream options", () => {
 			fixture.session.agent.state.model = { ...fixture.session.agent.state.model };
 			expect(fixture.session.cacheWarmingStatus?.nextWarmAt).toBeGreaterThan(Date.now());
 			fixture.session.agent.state.messages = fixture.session.agent.state.messages.slice(1);
+			expect(fixture.session.cacheWarmingStatus?.reason).toBe("conversation context changed");
+		} finally {
+			fixture.dispose();
+		}
+	});
+
+	// Regression tests for #10536: a virtual selection must warm its physical request.
+	it("warms the latest routed request without routing the refresh again", async () => {
+		const fixture = await createCacheWarmingSession(undefined, true);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+		try {
+			await fixture.session.prompt("first");
+			expect(fixture.session.cacheWarmingStatus?.state).toBe("scheduled");
+			await vi.advanceTimersByTimeAsync(270_000);
+			expect(fixture.decide).toHaveBeenCalledTimes(1);
+			expect(fixture.requests.at(-1)).toEqual({ model: "capture-model", maxTokens: 1 });
+			expect(fixture.route).toHaveBeenCalledTimes(1);
+			expect(fixture.session.model).toMatchObject({ provider: "router", id: "auto" });
+
+			fixture.setRoute("other-model");
+			await fixture.session.prompt("second");
+			await vi.advanceTimersByTimeAsync(270_000);
+			expect(fixture.requests.filter((request) => request.maxTokens === 1)).toEqual([
+				{ model: "capture-model", maxTokens: 1 },
+				{ model: "other-model", maxTokens: 1 },
+			]);
+			expect(fixture.route).toHaveBeenCalledTimes(2);
+		} finally {
+			fixture.dispose();
+			vi.useRealTimers();
+		}
+	});
+
+	// Regression tests for #10536: the virtual model exception must retain invalidation checks.
+	it.each(["selection", "prefix", "session"])("stops routed warming after changing the %s", async (change) => {
+		const fixture = await createCacheWarmingSession(undefined, true);
+		vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout", "Date"] });
+		try {
+			await fixture.session.prompt("test");
+			fixture.session.agent.state.model = { ...fixture.session.agent.state.model };
+			fixture.session.agent.state.messages = [...fixture.session.agent.state.messages];
+			expect(fixture.session.cacheWarmingStatus?.state).toBe("scheduled");
+			if (change === "selection") {
+				await fixture.session.setModel(fixture.model);
+			} else if (change === "prefix") {
+				fixture.session.agent.state.messages = fixture.session.agent.state.messages.slice(1);
+			} else {
+				fixture.session.sessionManager.newSession();
+			}
+			await vi.advanceTimersByTimeAsync(270_000);
+			expect(fixture.providerCalls()).toBe(1);
+			expect(fixture.decide).not.toHaveBeenCalled();
+			expect(fixture.session.cacheWarmingStatus?.state).toBe("inactive");
+		} finally {
+			fixture.dispose();
+			vi.useRealTimers();
+		}
+	});
+
+	// Regression test for #10536: physical selections still reject redirected requests.
+	it("does not warm a different physical model under a physical selection", async () => {
+		const fixture = await createCacheWarmingSession();
+		try {
+			const stream = await fixture.session.agent.streamFunction(
+				{ ...fixture.model, id: "other-model" },
+				normalizeContext({ messages: [] }),
+				{ sessionId: fixture.session.sessionManager.getSessionId() },
+			);
+			await stream.result();
 			expect(fixture.session.cacheWarmingStatus?.reason).toBe("conversation context changed");
 		} finally {
 			fixture.dispose();
