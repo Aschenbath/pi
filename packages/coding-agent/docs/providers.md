@@ -191,6 +191,20 @@ The account and gateway IDs can come from the process environment or the credent
 
 `CLOUDFLARE_API_KEY` authenticates Pi to the gateway. Upstream access can use Cloudflare unified billing, credentials stored in the gateway, or an `Authorization` header configured for the provider in `models.json`.
 
+The built-in catalog includes tool-capable OpenAI, Anthropic, Workers AI, DeepSeek, and xAI models. Previously, catalog generation discarded DeepSeek and xAI entries even when models.dev listed them, so they never appeared in `/model`. These entries now use Cloudflare's [OpenAI-compatible endpoint](https://developers.cloudflare.com/ai-gateway/usage/chat-completion/):
+
+| Upstream | Example model ID in Pi | Gateway route |
+|---|---|---|
+| OpenAI | `gpt-4o` | `/openai`, Responses API |
+| Anthropic | `claude-sonnet-4-5` | `/anthropic`, Messages API |
+| Workers AI | `workers-ai/@cf/moonshotai/kimi-k2.6` | `/compat`, Chat Completions |
+| DeepSeek | `deepseek/deepseek-v4-pro` | `/compat`, Chat Completions |
+| xAI | `grok/grok-4.5` | `/compat`, Chat Completions |
+
+The compatible endpoint needs a provider-prefixed model ID. Pi translates models.dev's `xai/` prefix to Cloudflare's documented `grok/` prefix. For example, select `cloudflare-ai-gateway/grok/grok-4.5` with `--model`. Existing OpenAI, Anthropic, and Workers AI routes keep their IDs and authentication behavior.
+
+An entry in models.dev alone does not establish a usable gateway route. Other prefixes, including `alibaba/` and `moonshotai/`, remain outside this built-in mapping; use a verified endpoint in [`models.json`](models.md#configure-a-compatible-endpoint) for additional gateway integrations. Offline catalog-generation and simulated HTTP tests cover the added routes, metadata preservation, and existing provider mappings. They do not verify a live account's model access or billing configuration.
+
 ### Cloudflare Workers AI
 
 Workers AI requires a token and account ID:

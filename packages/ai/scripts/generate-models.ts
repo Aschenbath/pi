@@ -1926,10 +1926,17 @@ async function loadModelsDevData(): Promise<Model<any>[]> {
 					// models.dev lists dotted versions (claude-opus-5.5), but Anthropic only
 					// accepts dashed IDs (claude-opus-5-5).
 					id = nativeId.replaceAll(".", "-");
-				} else if (upstream === "workers-ai") {
+				} else if (
+					upstream === "workers-ai" ||
+					upstream === "deepseek" ||
+					upstream === "xai" ||
+					upstream === "grok"
+				) {
 					api = "openai-completions";
 					baseUrl = CLOUDFLARE_AI_GATEWAY_COMPAT_BASE_URL;
-					id = prefixedId;
+					// The compatible endpoint routes by prefix; xAI uses "grok", not models.dev's "xai".
+					// https://developers.cloudflare.com/ai-gateway/usage/chat-completion/
+					id = `${upstream === "xai" ? "grok" : upstream}/${nativeId}`;
 				} else {
 					continue;
 				}
