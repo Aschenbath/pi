@@ -70,6 +70,14 @@ Continue consuming [events](json.md) after that response. `agent_end` marks the 
 
 Subscribe before sending a prompt to avoid missing a fast completion. `RpcClient.promptAndWait()` does this internally. If using separate `RpcClient` calls, install the event listener before `prompt()` and call `waitForIdle()` only while a run is active.
 
+### Session replacement and extensions
+
+Successful `new_session`, `switch_session`, `fork`, and `clone` commands shut down the outgoing session and bind the replacement before responding. Extensions receive one `session_shutdown` for the outgoing session and one `session_start` for the replacement; resource discovery also runs once during binding. A cancelled replacement keeps the current session and does not repeat startup. These extension hooks are distinct from the streamed `agent_start` and `agent_settled` events for prompt execution.
+
+Previously, these RPC handlers bound the replacement again after the runtime had already done so. That repeated extension startup side effects, such as registering timers or appending entries. The runtime's awaited rebind callback now owns replacement binding; RPC response formats and subsequent state queries remain unchanged.
+
+Regression tests send JSONL through the RPC reader and dispatcher with a real session runtime and a local faux provider. They cover successful and cancelled replacements, resource discovery, extension notifications, startup entries, state queries, and subsequent prompt events without external provider calls.
+
 ## Errors
 
 A failed command returns one response with `success: false`:
