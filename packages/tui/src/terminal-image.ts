@@ -81,9 +81,10 @@ function detectCapabilitiesFromEnvironment(tmuxForwardsHyperlink: () => boolean)
 		return { images: null, trueColor: hasTrueColorHint, hyperlinks: tmuxForwardsHyperlink() };
 	}
 
-	// screen does not forward OSC 8 hyperlinks, so keep them off there.
+	// screen inherits COLORTERM even when truecolor forwarding is disabled.
+	// Trust direct-color TERM entries; explicit overrides are applied below.
 	if (term.startsWith("screen")) {
-		return { images: null, trueColor: hasTrueColorHint, hyperlinks: false };
+		return { images: null, trueColor: term.endsWith("-direct"), hyperlinks: false };
 	}
 
 	// Herdr forwards OSC 8 hyperlinks. It runs inside another terminal whose variables, such as

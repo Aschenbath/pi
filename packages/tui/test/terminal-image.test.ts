@@ -6,6 +6,7 @@ import assert from "node:assert";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
+import { foregroundAnsi, rgbColor } from "../src/colors.ts";
 import { Image, setImageTranscoder } from "../src/components/image.ts";
 import {
 	cropKittyImageLine,
@@ -19,6 +20,7 @@ import {
 	getKittyImageMetadata,
 	getKittyImagePlacement,
 	getKittyImagePlacementRows,
+	getTerminalColorMode,
 	hyperlink,
 	imageFallback,
 	isImageLine,
@@ -317,6 +319,31 @@ describe("detectCapabilities", () => {
 		});
 	});
 
+	// #10618: screen inherits COLORTERM even when its truecolor forwarding is disabled.
+	for (const term of ["screen", "screen-256color", "screen.xterm-256color"]) {
+		for (const colorTerm of ["truecolor", "24bit"]) {
+			it(`uses 256 colors for ${term} with inherited COLORTERM=${colorTerm}`, () => {
+				const caps = withEnv({ TERM: term, COLORTERM: colorTerm, TERM_PROGRAM: "ghostty" }, () =>
+					detectCapabilities(),
+				);
+				assert.deepStrictEqual(caps, { images: null, trueColor: false, hyperlinks: false });
+				assert.match(foregroundAnsi(rgbColor(102, 102, 102), getTerminalColorMode(caps)), /^\x1b\[38;5;/);
+			});
+		}
+	}
+
+	for (const [override, expected] of [
+		["1", true],
+		["0", false],
+		["auto", false],
+	] as const) {
+		it(`honors PI_TRUE_COLOR=${override} under screen`, () => {
+			withEnv({ TERM: "screen-256color", COLORTERM: "truecolor", PI_TRUE_COLOR: override }, () => {
+				assert.strictEqual(detectCapabilities().trueColor, expected);
+			});
+		});
+	}
+
 	// #10573
 	it("enables hyperlinks without images for Herdr", () => {
 		withEnv({ TERM_PROGRAM: "herdr", TERM: "xterm-256color", COLORTERM: "truecolor", KITTY_WINDOW_ID: "1" }, () => {
@@ -449,18 +476,22 @@ describe("detectCapabilities", () => {
 	});
 
 	it("trusts explicit truecolor hints through tmux", () => {
-		withEnv({ COLORTERM: "truecolor", TMUX: "/tmp/tmux-1000/default,1234,0", TERM: "tmux-256color" }, () => {
-			const caps = detectCapabilities(() => false);
-			assert.strictEqual(caps.trueColor, true);
-			assert.strictEqual(caps.hyperlinks, false);
-			assert.strictEqual(caps.images, null);
-		});
+		for (const term of ["tmux-256color", "screen-256color"]) {
+			withEnv({ COLORTERM: "truecolor", TMUX: "/tmp/tmux-1000/default,1234,0", TERM: term }, () => {
+				const caps = detectCapabilities(() => false);
+				assert.strictEqual(caps.trueColor, true);
+				assert.strictEqual(caps.hyperlinks, false);
+				assert.strictEqual(caps.images, null);
+			});
+		}
 	});
 
 	it("detects truecolor from direct-color TERM values", () => {
-		withEnv({ TERM: "xterm-direct" }, () => {
-			assert.strictEqual(detectCapabilities(() => false).trueColor, true);
-		});
+		for (const term of ["xterm-direct", "screen-direct"]) {
+			withEnv({ TERM: term }, () => {
+				assert.strictEqual(detectCapabilities(() => false).trueColor, true);
+			});
+		}
 	});
 });
 

@@ -204,6 +204,12 @@ export PI_HARDWARE_CURSOR=1
 pi
 ```
 
+## GNU screen
+
+Pi defaults to 256-color output under GNU screen. An inherited `COLORTERM=truecolor` or `24bit` does not enable truecolor: screen can discard 24-bit color sequences when its truecolor forwarding is disabled.
+
+If your screen version supports it and you enable `truecolor on` in `.screenrc`, you can select truecolor in Pi with `PI_TRUE_COLOR=1` or the `terminal.trueColor: true` setting. A `TERM` ending in `-direct` also selects truecolor. These Pi overrides do not enable forwarding in screen itself.
+
 ## Override detected capabilities
 
 Pi automatically detects OSC 8 hyperlinks, inline image protocols, and truecolor support. A terminal proxy or multiplexer can make that detection inaccurate.
