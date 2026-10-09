@@ -2,8 +2,7 @@
  * Shared command execution utilities for extensions and custom tools.
  */
 
-import { spawn } from "node:child_process";
-import { waitForChildProcess } from "../utils/child-process.ts";
+import { spawnProcess, waitForChildProcess } from "../utils/child-process.ts";
 
 /**
  * Options for executing shell commands.
@@ -28,8 +27,8 @@ export interface ExecResult {
 }
 
 /**
- * Execute a shell command and return stdout/stderr/code.
- * Supports timeout and abort signal.
+ * Execute a command and return stdout/stderr/code.
+ * Supports Windows command shims, timeout, and abort signal.
  */
 export async function execCommand(
 	command: string,
@@ -38,7 +37,7 @@ export async function execCommand(
 	options?: ExecOptions,
 ): Promise<ExecResult> {
 	return new Promise((resolve) => {
-		const proc = spawn(command, args, {
+		const proc = spawnProcess(command, args, {
 			cwd,
 			shell: false,
 			stdio: ["ignore", "pipe", "pipe"],

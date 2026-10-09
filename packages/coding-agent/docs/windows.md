@@ -62,6 +62,16 @@ JSON uses backslashes for escape sequences. When you write a Windows path with b
 
 See [Configure shell commands](shell-aliases.md) for command prefixes, aliases, and the complete shell-resolution behavior.
 
+## Run commands from extensions
+
+Windows CLIs such as npm, npx, and pnpm commonly use `.cmd` launchers. `pi.exec()` resolves `.cmd` and `.bat` launchers, so extensions can call them directly:
+
+```typescript
+const result = await pi.exec("npm", ["--version"]);
+```
+
+Pass the command and its arguments separately. Pi uses its shared Windows-compatible process launcher instead of attempting to run a command script as a native executable. For shell built-ins, pipelines, or redirection, call a shell explicitly.
+
 ## Configure Windows Terminal
 
 Windows Terminal reserves or rewrites some modified keys. See [Windows Terminal](terminal-setup.md#windows-terminal) to configure `Shift+Enter` and `Alt+Enter`, and [Keybindings](keybindings.md) for Pi's Windows and WSL shortcut defaults.
