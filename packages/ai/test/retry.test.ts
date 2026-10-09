@@ -1,3 +1,4 @@
+import { getEventListeners } from "node:events";
 import { describe, expect, it, vi } from "vitest";
 import { fauxAssistantMessage } from "../src/providers/faux.ts";
 import { isRetryableAssistantError, type RetryPolicy, retryAssistantCall, retryDelayMs } from "../src/utils/retry.ts";
@@ -210,6 +211,41 @@ describe("retryAssistantCall", () => {
 		expect(onRetryFinished).toHaveBeenCalledWith(true, 2);
 	});
 
+	// #10506: completed backoffs must not accumulate listeners on a reused signal.
+	it.each(["stop", "error", "aborted"] as const)(
+		"releases completed backoff listeners when the final response is %s",
+		async (stopReason) => {
+			const controller = new AbortController();
+			const callerListener = vi.fn();
+			controller.signal.addEventListener("abort", callerListener);
+			try {
+				for (let run = 0; run < 2; run++) {
+					let calls = 0;
+					const finalResponse = fauxAssistantMessage("done", { stopReason });
+					const produce = vi.fn(async () =>
+						++calls <= enabled.maxRetries
+							? fauxAssistantMessage("", { stopReason: "error", errorMessage: "terminated" })
+							: finalResponse,
+					);
+					const listenerCounts: number[] = [];
+					const result = await retryAssistantCall(produce, enabled, controller.signal, {
+						onRetryAttemptStart: () => {
+							listenerCounts.push(getEventListeners(controller.signal, "abort").length);
+						},
+					});
+					expect(result).toBe(finalResponse);
+					expect(produce).toHaveBeenCalledTimes(4);
+					expect(listenerCounts).toEqual([1, 1, 1]);
+					expect(getEventListeners(controller.signal, "abort")).toEqual([callerListener]);
+				}
+				controller.abort();
+				expect(callerListener).toHaveBeenCalledTimes(1);
+			} finally {
+				controller.signal.removeEventListener("abort", callerListener);
+			}
+		},
+	);
+
 	it("reports an aborted retried call as unsuccessful", async () => {
 		let n = 0;
 		const produce = vi.fn(async () => {
@@ -281,5 +317,6 @@ describe("retryAssistantCall", () => {
 		expect(res.errorMessage).toBeUndefined();
 		expect(produce).toHaveBeenCalledTimes(1);
 		expect(onRetryFinished).toHaveBeenCalledWith(false, 1, "terminated");
+		expect(getEventListeners(controller.signal, "abort")).toHaveLength(0);
 	});
 });
